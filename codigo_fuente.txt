@@ -1,0 +1,67 @@
+/*
+ * ===========================================================================
+ *  TALLER C PARA PIC - LEDs PIC16F84A
+ *  Sistemas Basados en Microcontroladores - Universidad del Valle
+ *  Docente: Jose Neftali Torres M.
+ * ---------------------------------------------------------------------------
+ *  Autor(es)  : <NOMBRE(S) Y APELLIDO(S)>
+ *  Compilador : MPLAB XC8 v4.00  (DFP: Microchip.PIC16Fxxx_DFP 1.9.176)
+ *  Comando    : xc8-cc -mcpu=16f84a -mdfp=$HOME/packs/PIC16Fxxx_DFP/xc8 main.c
+ *  Reloj      : cristal de 16 MHz (FOSC = HS, _XTAL_FREQ = 16000000)
+ * ---------------------------------------------------------------------------
+ *  ESTRATEGIA DE TIEMPOS
+ *    __delay_ms() solo acepta constantes, por eso se usa un "tick" base fijo
+ *    de 25 ms (una unica llamada a __delay_ms en todo el programa) y cada
+ *    efecto define cuantos ticks dura cada paso:
+ *        tiempo por paso = ticks[efecto] x 25 ms
+ *    Los patrones y los parametros estan en tablas const, que XC8 coloca en
+ *    memoria de programa (0 bytes de RAM). Para agregar un efecto solo se
+ *    agregan datos a las tablas y se incrementa N_EFECTOS; la logica no se
+ *    duplica.
+ * ---------------------------------------------------------------------------
+ *  EFECTOS (se ejecutan en secuencia: 0 -> 1 -> 2 -> 3 -> repetir)
+ *    0  Clase            : par de LEDs que rebota           12 estados 125 ms
+ *    1  Llenado/vaciado  : barra que crece y luego decrece  16 estados  75 ms
+ *    2  Cierre extremos  : LEDs de los extremos al centro    8 estados 250 ms
+ *    3  Punteros intercalados: un LED sube en cada nibble       8 estados 500 ms
+ * ===========================================================================
+ */
+#pragma config FOSC = HS, WDTE = OFF, PWRTE = ON, CP = OFF
+
+#include <xc.h>
+#define _XTAL_FREQ 16000000
+#define BASE_MS    25          /* tick base de temporizacion (ms)            */
+#define N_EFECTOS  4           /* cantidad de efectos en la secuencia        */
+
+/* Todos los patrones seguidos: 12 + 16 + 8 + 8 = 44 estados (const = Flash) */
+const unsigned char patron[44] = {
+    /* Efecto 0 (clase): rebote de dos LEDs */
+    0x03,0x06,0x0C,0x18,0x30,0x60,0xC0,0x60,0x30,0x18,0x0C,0x06,
+    /* Efecto 1: llenado y vaciado */
+    0x01,0x03,0x07,0x0F,0x1F,0x3F,0x7F,0xFF,
+    0x7F,0x3F,0x1F,0x0F,0x07,0x03,0x01,0x00,
+    /* Efecto 2: extremos hacia el centro y regreso */
+    0x81,0x42,0x24,0x18,0x24,0x42,0x81,0x00,
+    /* Efecto 3: dos punteros intercalados (nibble bajo / nibble alto) */
+    0x01,0x10,0x02,0x20,0x04,0x40,0x08,0x80
+};
+
+const unsigned char inicio[N_EFECTOS] = {  0, 12, 28, 36 }; /* 1er estado    */
+const unsigned char cuenta[N_EFECTOS] = { 12, 16,  8,  8 }; /* nº de estados */
+const unsigned char ticks [N_EFECTOS] = {  5,  3, 10, 20 }; /* x25 ms/paso   */
+
+void main(void) {
+    unsigned char e, i, t;
+
+    TRISB = 0;                               /* Puerto B como salida         */
+
+    while (1) {
+        for (e = 0; e < N_EFECTOS; e++) {    /* clase -> 2 -> 3 -> 4         */
+            for (i = 0; i < cuenta[e]; i++) {
+                PORTB = patron[inicio[e] + i];       /* mostrar el estado    */
+                for (t = 0; t < ticks[e]; t++)       /* esperar ticks x 25ms */
+                    __delay_ms(BASE_MS);
+            }
+        }
+    }
+}
